@@ -3,99 +3,99 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-// ─── CONFIGURACIÓN ──────────────────────────────────────────────────────────
+// â”€â”€â”€ CONFIGURACIÃ“N â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "rr_photography_token";
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;   // Token de Meta
-const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID; // ID del número en Meta
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID; // ID del nÃºmero en Meta
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const OWNER_PHONE = process.env.OWNER_PHONE; // Tu número con código de país, ej: 5214441362176
+const OWNER_PHONE = process.env.OWNER_PHONE; // Tu nÃºmero con cÃ³digo de paÃ­s, ej: 5214441362176
 
-// ─── MEMORIA DE CONVERSACIONES ──────────────────────────────────────────────
+// â”€â”€â”€ MEMORIA DE CONVERSACIONES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Guarda el historial de cada cliente para que el agente recuerde el contexto
 const conversaciones = {};
 
-// ─── PERSONALIDAD Y CONOCIMIENTO DEL AGENTE ─────────────────────────────────
-const SYSTEM_PROMPT = `Eres el asistente virtual de RR Photography, un negocio de fotografía para eventos en San Luis Potosí y Matehuala, México. Tu lema es "Del momento al recuerdo".
+// â”€â”€â”€ PERSONALIDAD Y CONOCIMIENTO DEL AGENTE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const SYSTEM_PROMPT = `Eres el asistente virtual de RR Photography, un negocio de fotografÃ­a para eventos en San Luis PotosÃ­ y Matehuala, MÃ©xico. Tu lema es "Del momento al recuerdo".
 
-Tu nombre es "Roro" y representas a la empresa con un tono amable, profesional y cálido.
+Tu nombre es "Roro" y representas a la empresa con un tono amable, profesional y cÃ¡lido.
 
-## PAQUETES FOTOGRÁFICOS
+## PAQUETES FOTOGRÃFICOS
 
-### 📸 Paquete Digital — $2,350 MXN
+### ðŸ“¸ Paquete Digital â€” $2,350 MXN
 - 50 fotos digitales editadas
 - Entrega por WhatsApp
-- Opción USB personalizado (+$350)
-- Ideal para eventos pequeños
+- OpciÃ³n USB personalizado (+$350)
+- Ideal para eventos pequeÃ±os
 
-### 🖼️ Paquete Impresiones — $3,400 MXN
-- 50 fotografías digitales
-- 20 fotografías impresas en tamaño 6x8"
-- Opción de incluir USB (+$350)
+### ðŸ–¼ï¸ Paquete Impresiones â€” $3,400 MXN
+- 50 fotografÃ­as digitales
+- 20 fotografÃ­as impresas en tamaÃ±o 6x8"
+- OpciÃ³n de incluir USB (+$350)
 
-### 🎁 Paquete Memorable — $4,500 MXN
-- 16 fotos en álbum personalizado
+### ðŸŽ Paquete Memorable â€” $4,500 MXN
+- 16 fotos en Ã¡lbum personalizado
 - 15 impresiones 6x8
 - 2 impresiones 10x15
 - Entrega en USB
 
 ### EXTRAS
 - USB personalizado: $350
-- Álbum adicional: desde $1,200
+- Ãlbum adicional: desde $1,200
 
-## INFORMACIÓN DEL NEGOCIO
-- Cobertura: San Luis Potosí y Matehuala
-- Tipos de eventos: infantiles, XV años, bodas, corporativos, graduaciones, y todo tipo de eventos
-- Anticipación mínima: 1 día (aunque se recomienda reservar con más tiempo)
+## INFORMACIÃ“N DEL NEGOCIO
+- Cobertura: San Luis PotosÃ­ y Matehuala
+- Tipos de eventos: infantiles, XV aÃ±os, bodas, corporativos, graduaciones, y todo tipo de eventos
+- AnticipaciÃ³n mÃ­nima: 1 dÃ­a (aunque se recomienda reservar con mÃ¡s tiempo)
 - Formas de pago: Efectivo, transferencia bancaria y tarjeta
-- Anticipo: 50% para confirmar la reserva, el resto el día del evento
+- Anticipo: 50% para confirmar la reserva, el resto el dÃ­a del evento
 
-## POLÍTICA DE NEGOCIACIÓN
+## POLÃTICA DE NEGOCIACIÃ“N
 - NO puedes ofrecer descuentos en los precios establecidos
-- SÍ puedes ajustar el trabajo proporcionalmente al presupuesto del cliente. Por ejemplo: si el cliente tiene menos presupuesto, puedes ofrecer menos fotos o menos impresiones
+- SÃ puedes ajustar el trabajo proporcionalmente al presupuesto del cliente. Por ejemplo: si el cliente tiene menos presupuesto, puedes ofrecer menos fotos o menos impresiones
 - Puedes combinar elementos de diferentes paquetes para adaptarte al presupuesto
 
-## PROCESO DE CONTRATACIÓN
+## PROCESO DE CONTRATACIÃ“N
 Cuando el cliente quiera contratar:
 1. Confirma fecha, lugar y tipo de evento
 2. Confirma el paquete elegido
 3. Informa que se requiere 50% de anticipo para apartar la fecha
 4. Indica las formas de pago disponibles
-5. Una vez que el cliente confirme todo, dile que el dueño lo contactará para finalizar los detalles del contrato
+5. Una vez que el cliente confirme todo, dile que el dueÃ±o lo contactarÃ¡ para finalizar los detalles del contrato
 
-## CUÁNDO TRANSFERIR AL DUEÑO
-Transfiere la conversación al dueño (Marce) en estos casos:
-- El cliente pregunta algo muy específico que no está en tu información
+## CUÃNDO TRANSFERIR AL DUEÃ‘O
+Transfiere la conversaciÃ³n al dueÃ±o (Marce) en estos casos:
+- El cliente pregunta algo muy especÃ­fico que no estÃ¡ en tu informaciÃ³n
 - Hay un conflicto o queja que no puedes resolver
 - El cliente insiste en hablar con una persona
-- Necesitas confirmar disponibilidad de fecha específica
+- Necesitas confirmar disponibilidad de fecha especÃ­fica
 - El cliente quiere cerrar el contrato formalmente
 
-Cuando necesites transferir, responde al cliente que lo comunicarás con Marce y termina tu mensaje con la etiqueta exacta: [TRANSFERIR_AL_DUEÑO]
+Cuando necesites transferir, responde al cliente que lo comunicarÃ¡s con Marce y termina tu mensaje con la etiqueta exacta: [TRANSFERIR_AL_DUEÃ‘O]
 
 ## REGLAS GENERALES
-- Responde siempre en español
-- Sé amable, profesional y entusiasta sobre la fotografía
-- Si no sabes algo, sé honesto y ofrece transferir con el dueño
-- Mantén las respuestas concisas pero completas
-- Usa emojis con moderación para dar calidez`;
+- Responde siempre en espaÃ±ol
+- SÃ© amable, profesional y entusiasta sobre la fotografÃ­a
+- Si no sabes algo, sÃ© honesto y ofrece transferir con el dueÃ±o
+- MantÃ©n las respuestas concisas pero completas
+- Usa emojis con moderaciÃ³n para dar calidez`;
 
-// ─── VERIFICACIÓN DEL WEBHOOK (Meta lo llama una vez para verificar) ──────────
+// â”€â”€â”€ VERIFICACIÃ“N DEL WEBHOOK (Meta lo llama una vez para verificar) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("✅ Webhook verificado correctamente");
+    console.log("âœ… Webhook verificado correctamente");
     res.status(200).send(challenge);
   } else {
     res.sendStatus(403);
   }
 });
 
-// ─── RECIBIR MENSAJES DE WHATSAPP ────────────────────────────────────────────
+// â”€â”€â”€ RECIBIR MENSAJES DE WHATSAPP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.post("/webhook", async (req, res) => {
-  res.sendStatus(200); // Responder rápido a Meta
+  res.sendStatus(200); // Responder rÃ¡pido a Meta
 
   try {
     const body = req.body;
@@ -109,7 +109,7 @@ app.post("/webhook", async (req, res) => {
     if (!messages || messages.length === 0) return;
 
     const message = messages[0];
-    const from = message.from; // Número del cliente
+    const from = message.from; // NÃºmero del cliente
     const messageType = message.type;
 
     let textoCliente = "";
@@ -120,12 +120,12 @@ app.post("/webhook", async (req, res) => {
       textoCliente = message.interactive?.button_reply?.title ||
                      message.interactive?.list_reply?.title || "";
     } else {
-      // Para mensajes de voz, imágenes, etc.
-      await enviarMensaje(from, "Hola 😊 Por el momento solo puedo responder mensajes de texto. ¿En qué te puedo ayudar?");
+      // Para mensajes de voz, imÃ¡genes, etc.
+      await enviarMensaje(from, "Hola ðŸ˜Š Por el momento solo puedo responder mensajes de texto. Â¿En quÃ© te puedo ayudar?");
       return;
     }
 
-    console.log(`📩 Mensaje de ${from}: ${textoCliente}`);
+    console.log(`ðŸ“© Mensaje de ${from}: ${textoCliente}`);
 
     // Inicializar historial si es la primera vez
     if (!conversaciones[from]) {
@@ -138,7 +138,7 @@ app.post("/webhook", async (req, res) => {
       content: textoCliente
     });
 
-    // Limitar historial a últimos 20 mensajes para no exceder tokens
+    // Limitar historial a Ãºltimos 20 mensajes para no exceder tokens
     if (conversaciones[from].length > 20) {
       conversaciones[from] = conversaciones[from].slice(-20);
     }
@@ -146,9 +146,9 @@ app.post("/webhook", async (req, res) => {
     // Obtener respuesta del agente IA
     const respuesta = await obtenerRespuestaIA(conversaciones[from]);
 
-    // Verificar si hay que transferir al dueño
-    if (respuesta.includes("[TRANSFERIR_AL_DUEÑO]")) {
-      const respuestaLimpia = respuesta.replace("[TRANSFERIR_AL_DUEÑO]", "").trim();
+    // Verificar si hay que transferir al dueÃ±o
+    if (respuesta.includes("[TRANSFERIR_AL_DUEÃ‘O]")) {
+      const respuestaLimpia = respuesta.replace("[TRANSFERIR_AL_DUEÃ‘O]", "").trim();
       await enviarMensaje(from, respuestaLimpia);
       await notificarDueno(from, textoCliente, conversaciones[from]);
     } else {
@@ -158,21 +158,21 @@ app.post("/webhook", async (req, res) => {
     // Agregar respuesta del agente al historial
     conversaciones[from].push({
       role: "assistant",
-      content: respuesta.replace("[TRANSFERIR_AL_DUEÑO]", "").trim()
+      content: respuesta.replace("[TRANSFERIR_AL_DUEÃ‘O]", "").trim()
     });
 
   } catch (error) {
-    console.error("❌ Error procesando mensaje:", error.message);
+    console.error("âŒ Error procesando mensaje:", error.message);
   }
 });
 
-// ─── LLAMAR A CLAUDE (ANTHROPIC) ─────────────────────────────────────────────
+// â”€â”€â”€ LLAMAR A CLAUDE (ANTHROPIC) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function obtenerRespuestaIA(historial) {
   try {
     const response = await axios.post(
       "https://api.anthropic.com/v1/messages",
       {
-        model: "claude-3-5-sonnet-20241022",
+        model: "claude-sonnet-4-5",
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
         messages: historial
@@ -188,12 +188,12 @@ async function obtenerRespuestaIA(historial) {
 
     return response.data.content[0].text;
   } catch (error) {
-    console.error("❌ Error con Anthropic:", error.response?.data || error.message);
-    return "Lo siento, tuve un problema técnico. Por favor intenta de nuevo en un momento 🙏";
+    console.error("âŒ Error con Anthropic:", error.response?.data || error.message);
+    return "Lo siento, tuve un problema tÃ©cnico. Por favor intenta de nuevo en un momento ðŸ™";
   }
 }
 
-// ─── ENVIAR MENSAJE A WHATSAPP ────────────────────────────────────────────────
+// â”€â”€â”€ ENVIAR MENSAJE A WHATSAPP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function enviarMensaje(to, texto) {
   try {
     await axios.post(
@@ -211,29 +211,29 @@ async function enviarMensaje(to, texto) {
         }
       }
     );
-    console.log(`✅ Mensaje enviado a ${to}`);
+    console.log(`âœ… Mensaje enviado a ${to}`);
   } catch (error) {
-    console.error("❌ Error enviando mensaje:", error.response?.data || error.message);
+    console.error("âŒ Error enviando mensaje:", error.response?.data || error.message);
   }
 }
 
-// ─── NOTIFICAR AL DUEÑO CUANDO SE REQUIERE INTERVENCIÓN ──────────────────────
+// â”€â”€â”€ NOTIFICAR AL DUEÃ‘O CUANDO SE REQUIERE INTERVENCIÃ“N â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function notificarDueno(clientePhone, ultimoMensaje, historial) {
   if (!OWNER_PHONE) return;
 
   const resumen = historial
-    .slice(-6) // Últimos 3 intercambios
+    .slice(-6) // Ãšltimos 3 intercambios
     .map(m => `${m.role === "user" ? "Cliente" : "Agente"}: ${m.content}`)
     .join("\n");
 
-  const notificacion = `🚨 *Atención requerida*\n\nUn cliente necesita tu atención personal.\n\n*Número del cliente:* ${clientePhone}\n\n*Últimos mensajes:*\n${resumen}\n\n_Por favor contáctalo directamente._`;
+  const notificacion = `ðŸš¨ *AtenciÃ³n requerida*\n\nUn cliente necesita tu atenciÃ³n personal.\n\n*NÃºmero del cliente:* ${clientePhone}\n\n*Ãšltimos mensajes:*\n${resumen}\n\n_Por favor contÃ¡ctalo directamente._`;
 
   await enviarMensaje(OWNER_PHONE, notificacion);
 }
 
-// ─── INICIAR SERVIDOR ─────────────────────────────────────────────────────────
+// â”€â”€â”€ INICIAR SERVIDOR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor RR Photography corriendo en puerto ${PORT}`);
-  console.log(`📡 Webhook URL: https://TU-DOMINIO/webhook`);
+  console.log(`ðŸš€ Servidor RR Photography corriendo en puerto ${PORT}`);
+  console.log(`ðŸ“¡ Webhook URL: https://TU-DOMINIO/webhook`);
 });
