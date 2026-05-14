@@ -4,51 +4,72 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "rr_photography_token";
+/* =========================
+   VARIABLES
+========================= */
+
+const VERIFY_TOKEN =
+  process.env.VERIFY_TOKEN || "rr_photography_token";
+
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const OWNER_PHONE = process.env.OWNER_PHONE;
-const PANEL_PASSWORD = process.env.PANEL_PASSWORD || "rr2024";
+
+const PANEL_PASSWORD =
+  process.env.PANEL_PASSWORD || "rr2024";
+
+/* =========================
+   MEMORIA
+========================= */
 
 const conversaciones = {};
 const metaDatos = {};
+const crm = {};
 
 const MAX_HISTORY = 8;
+
+/* =========================
+   PROMPT OPTIMIZADO
+========================= */
 
 const SYSTEM_PROMPT = `
 Eres Roro, asistente virtual de RR Photography.
 
-Negocio de fotografia para eventos en San Luis Potosi y Matehuala.
-Lema: "Del momento al recuerdo".
-
 Habla:
 - Profesional
-- Amable
 - Natural
 - Breve
 - Sin emojis
+- Maximo 3 oraciones
+
+NEGOCIO:
+Fotografia para eventos en San Luis Potosi y Matehuala.
 
 PAQUETES:
 
-Digital - $2350
-- 50 fotos digitales
+Digital $2350
+- 50 fotos digitales editadas
 - Entrega WhatsApp
-- USB opcional +$350
+- USB opcional +350
 
-Impresiones - $3400
+Impresiones $3400
 - 50 digitales
-- 20 impresas 6x8
+- 20 impresiones 6x8
 
-Memorable - $4500
+Memorable $4500
+- 50 fotos digitales editadas
 - Album personalizado
-- 15 impresiones 6x8
 - Poster 10x15
 - USB incluido
 
+Album Express $1150
+- 14 fotos en album fisico
+- Digitales opcionales +450
+
 EXTRAS:
-- USB +$350
-- Album extra desde $1200
+- USB personalizado +350
+- Album adicional +1150
 
 PAGOS:
 - 50% anticipo
@@ -57,52 +78,47 @@ PAGOS:
 - Tarjeta
 
 TRANSFERENCIA:
-Banco: Nu Mexico
-CLABE: 638180010168846336
+Banco Nu Mexico
+CLABE 638180010168846336
 
-EVENTOS:
-- XV años
-- Bodas
-- Infantiles
-- Corporativos
-- Graduaciones
-
-REGLAS:
-- No ofrecer descuentos
-- Si adaptar paquetes al presupuesto
-- Respuestas maximo 3 oraciones cortas
-- Responder siempre en español
+NO dar descuentos.
+SI adaptar paquetes al presupuesto.
 
 TRANSFERIR_DUENO si:
 - quieren hablar con persona
-- dudas muy especificas
+- dudas especificas
 - conflictos
-- confirmar disponibilidad exacta
-- cerrar contrato formalmente
+- confirmar disponibilidad
+- cerrar contrato
 
-Cuando transfieras agrega SOLO:
+Cuando transfieras agrega:
 TRANSFERIR_DUENO
 `;
 
-const RESPUESTAS_RAPIDAS = {
-  paquetes:
-    "Manejamos paquetes desde $2350 hasta $4500. Incluyen fotografia digital, impresiones y albumes dependiendo del paquete. ¿Que tipo de evento tendras?",
+/* =========================
+   RESPUESTAS RAPIDAS
+========================= */
+
+const RESPUESTAS = {
+  hola:
+    "Hola, soy Roro de RR Photography. ¿Que tipo de evento tendras?",
 
   precios:
-    "Nuestros paquetes empiezan desde $2350 MXN. ¿Te gustaria conocer las opciones disponibles?",
+    "Manejamos paquetes desde $1150 hasta $4500. ¿Que tipo de evento buscas cubrir?",
 
-  pago:
-    "Aceptamos efectivo, transferencia y tarjeta. Para reservar se requiere 50% de anticipo.",
+  pagos:
+    "Aceptamos efectivo, transferencia y tarjeta. Para apartar fecha se requiere 50% de anticipo.",
 
   ubicacion:
     "Trabajamos en San Luis Potosi y Matehuala.",
 
   gracias:
-    "Con gusto. Quedo atento a cualquier duda.",
-
-  hola:
-    "Hola, soy Roro de RR Photography. ¿En que puedo ayudarte?"
+    "Con gusto. Quedo atento a cualquier duda."
 };
+
+/* =========================
+   WEBHOOK VERIFY
+========================= */
 
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
@@ -110,11 +126,15 @@ app.get("/webhook", (req, res) => {
   const challenge = req.query["hub.challenge"];
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    res.status(200).send(challenge);
-  } else {
-    res.sendStatus(403);
+    return res.status(200).send(challenge);
   }
+
+  res.sendStatus(403);
 });
+
+/* =========================
+   WEBHOOK MENSAJES
+========================= */
 
 app.post("/webhook", async (req, res) => {
   res.sendStatus(200);
@@ -124,15 +144,21 @@ app.post("/webhook", async (req, res) => {
 
     if (!body.object) return;
 
-    const messages = body.entry?.[0]?.changes?.[0]?.value?.messages;
+    const messages =
+      body.entry?.[0]?.changes?.[0]?.value?.messages;
 
     if (!messages || messages.length === 0) return;
 
     const message = messages[0];
+
     const from = message.from;
     const messageType = message.type;
 
     let textoCliente = "";
+
+    /* =========================
+       EXTRAER TEXTO
+    ========================= */
 
     if (messageType === "text") {
       textoCliente = message.text.body.trim();
@@ -144,74 +170,35 @@ app.post("/webhook", async (req, res) => {
     } else {
       await enviarMensaje(
         from,
-        "Por el momento solo puedo responder mensajes de texto."
+        "Por ahora solo puedo responder mensajes de texto."
       );
       return;
     }
 
     const textoLower = textoCliente.toLowerCase();
 
-    // IGNORAR MENSAJES MUY CORTOS
-    const mensajesSimples = [
-      "ok",
-      "gracias",
-      "va",
-      "sale",
-      "jaja",
-      "jj",
-      "👍",
-      "grcs"
-    ];
+    /* =========================
+       CREAR CRM
+    ========================= */
 
-    if (mensajesSimples.includes(textoLower)) {
-      await enviarMensaje(from, "Perfecto.");
-      return;
+    if (!crm[from]) {
+      crm[from] = {
+        nombre: "",
+        evento: "",
+        fecha: "",
+        paquete: "",
+        etapa: "nuevo",
+        saludoEnviado: false
+      };
     }
 
-    // RESPUESTAS RAPIDAS SIN IA
-    if (
-      textoLower.includes("precio") ||
-      textoLower.includes("cuanto") ||
-      textoLower.includes("costos")
-    ) {
-      await enviarMensaje(from, RESPUESTAS_RAPIDAS.precios);
-      return;
-    }
+    /* =========================
+       CREAR HISTORIAL
+    ========================= */
 
-    if (
-      textoLower.includes("paquete") ||
-      textoLower.includes("paquetes")
-    ) {
-      await enviarMensaje(from, RESPUESTAS_RAPIDAS.paquetes);
-      return;
+    if (!conversaciones[from]) {
+      conversaciones[from] = [];
     }
-
-    if (
-      textoLower.includes("pago") ||
-      textoLower.includes("transferencia")
-    ) {
-      await enviarMensaje(from, RESPUESTAS_RAPIDAS.pago);
-      return;
-    }
-
-    if (
-      textoLower.includes("donde") ||
-      textoLower.includes("ubicacion")
-    ) {
-      await enviarMensaje(from, RESPUESTAS_RAPIDAS.ubicacion);
-      return;
-    }
-
-    if (
-      textoLower.includes("hola") ||
-      textoLower.includes("buenas")
-    ) {
-      await enviarMensaje(from, RESPUESTAS_RAPIDAS.hola);
-      return;
-    }
-
-    // CREAR HISTORIAL
-    if (!conversaciones[from]) conversaciones[from] = [];
 
     if (!metaDatos[from]) {
       metaDatos[from] = {
@@ -219,6 +206,10 @@ app.post("/webhook", async (req, res) => {
         ultimaActividad: null
       };
     }
+
+    /* =========================
+       GUARDAR MENSAJE
+    ========================= */
 
     conversaciones[from].push({
       role: "user",
@@ -234,22 +225,193 @@ app.post("/webhook", async (req, res) => {
     metaDatos[from].ultimaActividad =
       new Date().toLocaleString("es-MX");
 
-    // LIMITAR HISTORIAL
+    /* =========================
+       LIMITAR HISTORIAL
+    ========================= */
+
     if (conversaciones[from].length > MAX_HISTORY) {
       conversaciones[from] =
         conversaciones[from].slice(-MAX_HISTORY);
     }
 
-    // IA
+    /* =========================
+       MENSAJES CORTOS
+    ========================= */
+
+    const mensajesSimples = [
+      "ok",
+      "gracias",
+      "va",
+      "sale",
+      "jaja",
+      "👍"
+    ];
+
+    if (mensajesSimples.includes(textoLower)) {
+      await enviarMensaje(from, "Perfecto.");
+      return;
+    }
+
+    /* =========================
+       SALUDO SOLO 1 VEZ
+    ========================= */
+
+    const esPrimeraInteraccion =
+      crm[from].saludoEnviado === false;
+
+    if (
+      esPrimeraInteraccion &&
+      (
+        textoLower.includes("hola") ||
+        textoLower.includes("buenas")
+      )
+    ) {
+      crm[from].saludoEnviado = true;
+
+      await enviarMensaje(from, RESPUESTAS.hola);
+
+      return;
+    }
+
+    /* =========================
+       RESPUESTAS RAPIDAS
+    ========================= */
+
+    if (
+      textoLower.includes("precio") ||
+      textoLower.includes("costos") ||
+      textoLower.includes("cuanto")
+    ) {
+      await enviarMensaje(from, RESPUESTAS.precios);
+      return;
+    }
+
+    if (
+      textoLower.includes("pago") ||
+      textoLower.includes("transferencia")
+    ) {
+      await enviarMensaje(from, RESPUESTAS.pagos);
+      return;
+    }
+
+    if (
+      textoLower.includes("ubicacion") ||
+      textoLower.includes("donde")
+    ) {
+      await enviarMensaje(from, RESPUESTAS.ubicacion);
+      return;
+    }
+
+    /* =========================
+       DETECTAR EVENTO
+    ========================= */
+
+    if (textoLower.includes("boda")) {
+      crm[from].evento = "Boda";
+    }
+
+    if (
+      textoLower.includes("xv") ||
+      textoLower.includes("quince")
+    ) {
+      crm[from].evento = "XV años";
+    }
+
+    if (
+      textoLower.includes("graduacion")
+    ) {
+      crm[from].evento = "Graduacion";
+    }
+
+    if (
+      textoLower.includes("infantil")
+    ) {
+      crm[from].evento = "Infantil";
+    }
+
+    /* =========================
+       DETECTAR PAQUETE
+    ========================= */
+
+    if (textoLower.includes("digital")) {
+      crm[from].paquete = "Digital";
+    }
+
+    if (textoLower.includes("impresiones")) {
+      crm[from].paquete = "Impresiones";
+    }
+
+    if (textoLower.includes("memorable")) {
+      crm[from].paquete = "Memorable";
+    }
+
+    if (
+      textoLower.includes("album express")
+    ) {
+      crm[from].paquete = "Album Express";
+    }
+
+    /* =========================
+       ETAPAS CRM
+    ========================= */
+
+    if (
+      textoLower.includes("precio") ||
+      textoLower.includes("cotizacion")
+    ) {
+      crm[from].etapa = "cotizacion";
+    }
+
+    if (
+      textoLower.includes("apartar") ||
+      textoLower.includes("anticipo")
+    ) {
+      crm[from].etapa = "anticipo";
+    }
+
+    if (
+      textoLower.includes("confirmado")
+    ) {
+      crm[from].etapa = "confirmado";
+    }
+
+    /* =========================
+       CONTEXTO CRM PARA IA
+    ========================= */
+
+    const contextoCRM = `
+Cliente:
+Evento: ${crm[from].evento || "No definido"}
+Paquete: ${crm[from].paquete || "No definido"}
+Etapa: ${crm[from].etapa}
+`;
+
+    const historialIA = [
+      {
+        role: "user",
+        content: contextoCRM
+      },
+      ...conversaciones[from]
+    ];
+
+    /* =========================
+       RESPUESTA IA
+    ========================= */
+
     const respuestaCompleta =
-      await obtenerRespuestaIA(conversaciones[from]);
+      await obtenerRespuestaIA(historialIA);
 
     const necesitaTransferir =
       respuestaCompleta.includes("TRANSFERIR_DUENO");
 
-    const respuestaLimpia = respuestaCompleta
-      .replace("TRANSFERIR_DUENO", "")
-      .trim();
+    const respuestaLimpia =
+      respuestaCompleta
+        .replace("TRANSFERIR_DUENO", "")
+        .trim();
+
+    /* =========================
+       ENVIAR RESPUESTA
+    ========================= */
 
     await enviarMensaje(from, respuestaLimpia);
 
@@ -264,10 +426,15 @@ app.post("/webhook", async (req, res) => {
       hora: new Date().toLocaleString("es-MX")
     });
 
+    /* =========================
+       NOTIFICAR DUEÑO
+    ========================= */
+
     if (necesitaTransferir) {
       await notificarDueno(
         from,
         textoCliente,
+        crm[from],
         conversaciones[from]
       );
     }
@@ -277,6 +444,10 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
+/* =========================
+   PANEL CRM
+========================= */
+
 app.get("/panel", (req, res) => {
   const pass = req.query.pass;
 
@@ -284,17 +455,19 @@ app.get("/panel", (req, res) => {
     return res.send(`
       <html>
       <body style="font-family:sans-serif;padding:40px;background:#111;color:white">
-        <h2>RR Photography - Panel</h2>
+        <h2>RR Photography CRM</h2>
+
         <form>
           <input
             name="pass"
             type="password"
-            placeholder="Contrasena"
-            style="padding:10px;font-size:16px;margin-right:10px"
+            placeholder="Contraseña"
+            style="padding:10px;font-size:16px"
           />
+
           <button
             type="submit"
-            style="padding:10px 20px;background:#25D366;color:white;border:none;font-size:16px"
+            style="padding:10px 20px;margin-left:10px;background:#25D366;color:white;border:none"
           >
             Entrar
           </button>
@@ -306,165 +479,194 @@ app.get("/panel", (req, res) => {
 
   const numeros = Object.keys(metaDatos);
 
-  let contactosHtml =
-    numeros.length === 0
-      ? '<div style="padding:20px;color:#666">No hay conversaciones aun</div>'
-      : "";
+  let contactosHtml = "";
 
   for (const num of numeros) {
     const data = metaDatos[num];
-    const ultimoMsg = data.mensajes[data.mensajes.length - 1];
+    const cliente = crm[num];
+
+    const ultimo =
+      data.mensajes[data.mensajes.length - 1];
 
     contactosHtml += `
       <div class="contacto" onclick="mostrar('${num}')">
         <div class="numero">+${num}</div>
-        <div class="preview">
-          ${ultimoMsg ? ultimoMsg.texto.substring(0, 50) : ""}
+
+        <div class="etapa">
+          ${cliente?.etapa || "nuevo"}
         </div>
-        <div class="hora">${data.ultimaActividad || ""}</div>
+
+        <div class="preview">
+          ${ultimo?.texto?.substring(0, 45) || ""}
+        </div>
       </div>
     `;
   }
 
-  const datosJS = JSON.stringify(metaDatos).replace(/</g, "\\u003c");
+  const datosJS =
+    JSON.stringify(metaDatos).replace(/</g, "\\u003c");
+
+  const crmJS =
+    JSON.stringify(crm).replace(/</g, "\\u003c");
 
   res.send(`
-  <!DOCTYPE html>
-  <html>
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>RR Photography Panel</title>
+<!DOCTYPE html>
+<html>
 
-    <style>
-      *{
-        box-sizing:border-box;
-        margin:0;
-        padding:0;
-      }
+<head>
+<meta charset="UTF-8">
+<title>RR CRM</title>
 
-      body{
-        font-family:sans-serif;
-        background:#111;
-        color:#eee;
-        display:flex;
-        height:100vh;
-      }
+<style>
+*{
+  box-sizing:border-box;
+}
 
-      #lista{
-        width:300px;
-        background:#1a1a1a;
-        overflow-y:auto;
-        border-right:1px solid #333;
-      }
+body{
+  margin:0;
+  font-family:sans-serif;
+  background:#111;
+  color:white;
+  display:flex;
+  height:100vh;
+}
 
-      #lista h2{
-        padding:16px;
-        background:#25D366;
-        color:white;
-      }
+#sidebar{
+  width:320px;
+  background:#1a1a1a;
+  overflow-y:auto;
+  border-right:1px solid #333;
+}
 
-      .contacto{
-        padding:14px;
-        border-bottom:1px solid #2a2a2a;
-        cursor:pointer;
-      }
+#sidebar h2{
+  padding:16px;
+  margin:0;
+  background:#25D366;
+}
 
-      .contacto:hover{
-        background:#252525;
-      }
+.contacto{
+  padding:14px;
+  border-bottom:1px solid #2a2a2a;
+  cursor:pointer;
+}
 
-      .numero{
-        font-weight:bold;
-      }
+.contacto:hover{
+  background:#252525;
+}
 
-      .preview{
-        font-size:12px;
-        color:#aaa;
-        margin-top:4px;
-      }
+.numero{
+  font-weight:bold;
+}
 
-      .hora{
-        font-size:11px;
-        color:#666;
-        margin-top:4px;
-      }
+.preview{
+  font-size:12px;
+  color:#aaa;
+  margin-top:4px;
+}
 
-      #chat{
-        flex:1;
-        display:flex;
-        flex-direction:column;
-      }
+.etapa{
+  font-size:11px;
+  color:#25D366;
+  margin-top:4px;
+}
 
-      #vacio{
-        flex:1;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        color:#555;
-      }
+#chat{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+}
 
-      #mensajes{
-        flex:1;
-        overflow-y:auto;
-        padding:16px;
-        display:flex;
-        flex-direction:column;
-        gap:10px;
-      }
+#top{
+  padding:16px;
+  border-bottom:1px solid #333;
+}
 
-      .burbuja{
-        max-width:70%;
-        padding:10px 14px;
-        border-radius:12px;
-        line-height:1.5;
-      }
+#mensajes{
+  flex:1;
+  overflow-y:auto;
+  padding:16px;
+}
 
-      .cliente{
-        background:#2a2a2a;
-        align-self:flex-start;
-      }
+.burbuja{
+  padding:10px 14px;
+  border-radius:12px;
+  margin-bottom:10px;
+  max-width:70%;
+}
 
-      .agente{
-        background:#075E54;
-        align-self:flex-end;
-      }
-    </style>
-  </head>
+.cliente{
+  background:#2a2a2a;
+}
 
-  <body>
+.agente{
+  background:#075E54;
+  margin-left:auto;
+}
 
-    <div id="lista">
-      <h2>Conversaciones (${numeros.length})</h2>
-      ${contactosHtml}
-    </div>
+.crm{
+  margin-top:10px;
+  font-size:13px;
+  color:#bbb;
+}
+</style>
+</head>
 
-    <div id="chat">
-      <div id="vacio">Selecciona una conversacion</div>
-    </div>
+<body>
 
-    <script>
-      const datos = ${datosJS};
+<div id="sidebar">
+  <h2>RR CRM</h2>
+  ${contactosHtml}
+</div>
 
-      function mostrar(num){
-        const data = datos[num];
+<div id="chat">
+  <div id="top">
+    Selecciona una conversación
+  </div>
 
-        const msgsHtml = data.mensajes.map(m =>
-          '<div class="burbuja '+m.tipo+'">'+m.texto+'</div>'
-        ).join("");
+  <div id="mensajes"></div>
+</div>
 
-        document.getElementById("chat").innerHTML =
-          '<div id="mensajes">'+msgsHtml+'</div>';
-      }
-    </script>
+<script>
 
-  </body>
-  </html>
-  `);
+const datos = ${datosJS};
+const crm = ${crmJS};
+
+function mostrar(num){
+
+  const data = datos[num];
+  const cliente = crm[num];
+
+  const mensajes = data.mensajes.map(m => {
+    return '<div class="burbuja '+m.tipo+'">'+m.texto+'</div>';
+  }).join("");
+
+  document.getElementById("top").innerHTML =
+    '<b>+'+num+'</b>' +
+
+    '<div class="crm">' +
+    'Evento: ' + (cliente.evento || '-') + '<br>' +
+    'Paquete: ' + (cliente.paquete || '-') + '<br>' +
+    'Etapa: ' + (cliente.etapa || '-') +
+    '</div>';
+
+  document.getElementById("mensajes").innerHTML =
+    mensajes;
+}
+
+</script>
+
+</body>
+</html>
+`);
 });
+
+/* =========================
+   CLAUDE
+========================= */
 
 async function obtenerRespuestaIA(historial) {
   try {
+
     const response = await axios.post(
       "https://api.anthropic.com/v1/messages",
       {
@@ -486,6 +688,7 @@ async function obtenerRespuestaIA(historial) {
     return response.data.content[0].text;
 
   } catch (error) {
+
     console.error(
       "Error Anthropic:",
       error.response?.data || error.message
@@ -495,8 +698,14 @@ async function obtenerRespuestaIA(historial) {
   }
 }
 
+/* =========================
+   WHATSAPP
+========================= */
+
 async function enviarMensaje(to, texto) {
+
   try {
+
     await axios.post(
       `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
       {
@@ -516,6 +725,7 @@ async function enviarMensaje(to, texto) {
     );
 
   } catch (error) {
+
     console.error(
       "Error enviando:",
       error.response?.data || error.message
@@ -523,28 +733,52 @@ async function enviarMensaje(to, texto) {
   }
 }
 
+/* =========================
+   NOTIFICAR DUEÑO
+========================= */
+
 async function notificarDueno(
   clientePhone,
   ultimoMensaje,
+  clienteCRM,
   historial
 ) {
+
   if (!OWNER_PHONE) return;
 
   const ultimos = historial
     .slice(-4)
     .map(m =>
-      (m.role === "user" ? "Cliente: " : "Agente: ") + m.content
+      (m.role === "user"
+        ? "Cliente: "
+        : "Agente: ") + m.content
     )
     .join("\n");
 
-  const notificacion =
-    "Atencion requerida\n\n" +
-    "Cliente: +" + clientePhone +
-    "\n\n" +
-    ultimos;
+  const notificacion = `
+Atencion requerida
 
-  await enviarMensaje(OWNER_PHONE, notificacion);
+Cliente: +${clientePhone}
+
+Evento: ${clienteCRM.evento || "-"}
+
+Paquete: ${clienteCRM.paquete || "-"}
+
+Etapa: ${clienteCRM.etapa || "-"}
+
+Ultimos mensajes:
+${ultimos}
+`;
+
+  await enviarMensaje(
+    OWNER_PHONE,
+    notificacion
+  );
 }
+
+/* =========================
+   SERVER
+========================= */
 
 const PORT = process.env.PORT || 3000;
 
