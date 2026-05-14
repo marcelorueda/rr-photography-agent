@@ -30,7 +30,7 @@ const crm = {};
 const MAX_HISTORY = 8;
 
 /* =========================
-   PROMPT OPTIMIZADO
+   PROMPT IA
 ========================= */
 
 const SYSTEM_PROMPT = `
@@ -42,6 +42,7 @@ Habla:
 - Breve
 - Sin emojis
 - Maximo 3 oraciones
+- NO vuelvas a saludar si ya hay una conversacion activa
 
 NEGOCIO:
 Fotografia para eventos en San Luis Potosi y Matehuala.
@@ -54,7 +55,7 @@ Digital $2350
 - USB opcional +350
 
 Impresiones $3400
-- 50 digitales
+- 50 fotos digitales
 - 20 impresiones 6x8
 
 Memorable $4500
@@ -65,7 +66,7 @@ Memorable $4500
 
 Album Express $1150
 - 14 fotos en album fisico
-- Digitales opcionales +450
+- Fotos digitales opcionales +450
 
 EXTRAS:
 - USB personalizado +350
@@ -81,7 +82,7 @@ TRANSFERENCIA:
 Banco Nu Mexico
 CLABE 638180010168846336
 
-NO dar descuentos.
+NO ofrecer descuentos.
 SI adaptar paquetes al presupuesto.
 
 TRANSFERIR_DUENO si:
@@ -100,7 +101,7 @@ TRANSFERIR_DUENO
 ========================= */
 
 const RESPUESTAS = {
-  hola:
+  saludo:
     "Hola, soy Roro de RR Photography. ¿Que tipo de evento tendras?",
 
   precios:
@@ -187,8 +188,7 @@ app.post("/webhook", async (req, res) => {
         evento: "",
         fecha: "",
         paquete: "",
-        etapa: "nuevo",
-        saludoEnviado: false
+        etapa: "nuevo"
       };
     }
 
@@ -235,7 +235,7 @@ app.post("/webhook", async (req, res) => {
     }
 
     /* =========================
-       MENSAJES CORTOS
+       MENSAJES MUY CORTOS
     ========================= */
 
     const mensajesSimples = [
@@ -253,22 +253,24 @@ app.post("/webhook", async (req, res) => {
     }
 
     /* =========================
-       SALUDO SOLO 1 VEZ
+       SALUDO SOLO PRIMER MENSAJE
     ========================= */
 
-    const esPrimeraInteraccion =
-      crm[from].saludoEnviado === false;
+    const esPrimerMensaje =
+      conversaciones[from].length <= 1;
 
     if (
-      esPrimeraInteraccion &&
+      esPrimerMensaje &&
       (
         textoLower.includes("hola") ||
-        textoLower.includes("buenas")
+        textoLower.includes("buenas") ||
+        textoLower.includes("informes")
       )
     ) {
-      crm[from].saludoEnviado = true;
-
-      await enviarMensaje(from, RESPUESTAS.hola);
+      await enviarMensaje(
+        from,
+        RESPUESTAS.saludo
+      );
 
       return;
     }
@@ -363,20 +365,14 @@ app.post("/webhook", async (req, res) => {
     }
 
     if (
-      textoLower.includes("apartar") ||
-      textoLower.includes("anticipo")
+      textoLower.includes("anticipo") ||
+      textoLower.includes("apartar")
     ) {
       crm[from].etapa = "anticipo";
     }
 
-    if (
-      textoLower.includes("confirmado")
-    ) {
-      crm[from].etapa = "confirmado";
-    }
-
     /* =========================
-       CONTEXTO CRM PARA IA
+       CONTEXTO CRM
     ========================= */
 
     const contextoCRM = `
@@ -395,7 +391,7 @@ Etapa: ${crm[from].etapa}
     ];
 
     /* =========================
-       RESPUESTA IA
+       IA
     ========================= */
 
     const respuestaCompleta =
@@ -413,7 +409,10 @@ Etapa: ${crm[from].etapa}
        ENVIAR RESPUESTA
     ========================= */
 
-    await enviarMensaje(from, respuestaLimpia);
+    await enviarMensaje(
+      from,
+      respuestaLimpia
+    );
 
     conversaciones[from].push({
       role: "assistant",
@@ -427,13 +426,12 @@ Etapa: ${crm[from].etapa}
     });
 
     /* =========================
-       NOTIFICAR DUEÑO
+       TRANSFERIR
     ========================= */
 
     if (necesitaTransferir) {
       await notificarDueno(
         from,
-        textoCliente,
         crm[from],
         conversaciones[from]
       );
@@ -449,6 +447,7 @@ Etapa: ${crm[from].etapa}
 ========================= */
 
 app.get("/panel", (req, res) => {
+
   const pass = req.query.pass;
 
   if (pass !== PANEL_PASSWORD) {
@@ -482,6 +481,7 @@ app.get("/panel", (req, res) => {
   let contactosHtml = "";
 
   for (const num of numeros) {
+
     const data = metaDatos[num];
     const cliente = crm[num];
 
@@ -490,7 +490,10 @@ app.get("/panel", (req, res) => {
 
     contactosHtml += `
       <div class="contacto" onclick="mostrar('${num}')">
-        <div class="numero">+${num}</div>
+
+        <div class="numero">
+          +${num}
+        </div>
 
         <div class="etapa">
           ${cliente?.etapa || "nuevo"}
@@ -499,6 +502,7 @@ app.get("/panel", (req, res) => {
         <div class="preview">
           ${ultimo?.texto?.substring(0, 45) || ""}
         </div>
+
       </div>
     `;
   }
@@ -514,10 +518,13 @@ app.get("/panel", (req, res) => {
 <html>
 
 <head>
+
 <meta charset="UTF-8">
+
 <title>RR CRM</title>
 
 <style>
+
 *{
   box-sizing:border-box;
 }
@@ -608,22 +615,28 @@ body{
   font-size:13px;
   color:#bbb;
 }
+
 </style>
 </head>
 
 <body>
 
 <div id="sidebar">
-  <h2>RR CRM</h2>
-  ${contactosHtml}
+
+<h2>RR CRM</h2>
+
+${contactosHtml}
+
 </div>
 
 <div id="chat">
-  <div id="top">
-    Selecciona una conversación
-  </div>
 
-  <div id="mensajes"></div>
+<div id="top">
+Selecciona una conversación
+</div>
+
+<div id="mensajes"></div>
+
 </div>
 
 <script>
@@ -644,9 +657,13 @@ function mostrar(num){
     '<b>+'+num+'</b>' +
 
     '<div class="crm">' +
+
     'Evento: ' + (cliente.evento || '-') + '<br>' +
+
     'Paquete: ' + (cliente.paquete || '-') + '<br>' +
+
     'Etapa: ' + (cliente.etapa || '-') +
+
     '</div>';
 
   document.getElementById("mensajes").innerHTML =
@@ -665,6 +682,7 @@ function mostrar(num){
 ========================= */
 
 async function obtenerRespuestaIA(historial) {
+
   try {
 
     const response = await axios.post(
@@ -739,7 +757,6 @@ async function enviarMensaje(to, texto) {
 
 async function notificarDueno(
   clientePhone,
-  ultimoMensaje,
   clienteCRM,
   historial
 ) {
@@ -783,5 +800,7 @@ ${ultimos}
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log("Servidor corriendo en puerto " + PORT);
+  console.log(
+    "Servidor corriendo en puerto " + PORT
+  );
 });
