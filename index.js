@@ -26,8 +26,9 @@ const PANEL_PASSWORD =
 const conversaciones = {};
 const metaDatos = {};
 const crm = {};
+const memoriaIA = {};
 
-const MAX_HISTORY = 8;
+const MAX_HISTORY = 4;
 
 /* =========================
    PROMPT IA
@@ -36,13 +37,20 @@ const MAX_HISTORY = 8;
 const SYSTEM_PROMPT = `
 Eres Roro, asistente virtual de RR Photography.
 
-Habla:
+Tu personalidad:
 - Profesional
 - Natural
+- Conversacional
 - Breve
 - Sin emojis
 - Maximo 3 oraciones
-- NO vuelvas a saludar si ya hay una conversacion activa
+- NO vuelvas a saludar si ya existe conversacion
+
+IMPORTANTE:
+- Nunca preguntes otra vez datos ya conocidos
+- Si ya sabes el tipo de evento NO lo vuelvas a preguntar
+- Usa la informacion del CRM antes de responder
+- Responde corto para ahorrar tiempo al cliente
 
 NEGOCIO:
 Fotografia para eventos en San Luis Potosi y Matehuala.
@@ -87,10 +95,10 @@ SI adaptar paquetes al presupuesto.
 
 TRANSFERIR_DUENO si:
 - quieren hablar con persona
-- dudas especificas
-- conflictos
 - confirmar disponibilidad
 - cerrar contrato
+- tienen dudas complejas
+- existe conflicto
 
 Cuando transfieras agrega:
 TRANSFERIR_DUENO
@@ -122,11 +130,15 @@ const RESPUESTAS = {
 ========================= */
 
 app.get("/webhook", (req, res) => {
+
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
+  if (
+    mode === "subscribe" &&
+    token === VERIFY_TOKEN
+  ) {
     return res.status(200).send(challenge);
   }
 
@@ -138,9 +150,11 @@ app.get("/webhook", (req, res) => {
 ========================= */
 
 app.post("/webhook", async (req, res) => {
+
   res.sendStatus(200);
 
   try {
+
     const body = req.body;
 
     if (!body.object) return;
@@ -148,7 +162,9 @@ app.post("/webhook", async (req, res) => {
     const messages =
       body.entry?.[0]?.changes?.[0]?.value?.messages;
 
-    if (!messages || messages.length === 0) return;
+    if (!messages || messages.length === 0) {
+      return;
+    }
 
     const message = messages[0];
 
@@ -162,27 +178,36 @@ app.post("/webhook", async (req, res) => {
     ========================= */
 
     if (messageType === "text") {
-      textoCliente = message.text.body.trim();
+
+      textoCliente =
+        message.text.body.trim();
+
     } else if (messageType === "interactive") {
+
       textoCliente =
         message.interactive?.button_reply?.title ||
         message.interactive?.list_reply?.title ||
         "";
+
     } else {
+
       await enviarMensaje(
         from,
         "Por ahora solo puedo responder mensajes de texto."
       );
+
       return;
     }
 
-    const textoLower = textoCliente.toLowerCase();
+    const textoLower =
+      textoCliente.toLowerCase();
 
     /* =========================
        CREAR CRM
     ========================= */
 
     if (!crm[from]) {
+
       crm[from] = {
         nombre: "",
         evento: "",
@@ -193,7 +218,18 @@ app.post("/webhook", async (req, res) => {
     }
 
     /* =========================
-       CREAR HISTORIAL
+       MEMORIA IA
+    ========================= */
+
+    if (!memoriaIA[from]) {
+
+      memoriaIA[from] = {
+        resumen: ""
+      };
+    }
+
+    /* =========================
+       HISTORIAL
     ========================= */
 
     if (!conversaciones[from]) {
@@ -201,6 +237,7 @@ app.post("/webhook", async (req, res) => {
     }
 
     if (!metaDatos[from]) {
+
       metaDatos[from] = {
         mensajes: [],
         ultimaActividad: null
@@ -229,9 +266,15 @@ app.post("/webhook", async (req, res) => {
        LIMITAR HISTORIAL
     ========================= */
 
-    if (conversaciones[from].length > MAX_HISTORY) {
+    if (
+      conversaciones[from].length >
+      MAX_HISTORY
+    ) {
+
       conversaciones[from] =
-        conversaciones[from].slice(-MAX_HISTORY);
+        conversaciones[from].slice(
+          -MAX_HISTORY
+        );
     }
 
     /* =========================
@@ -240,20 +283,28 @@ app.post("/webhook", async (req, res) => {
 
     const mensajesSimples = [
       "ok",
-      "gracias",
       "va",
       "sale",
+      "perfecto",
+      "gracias",
       "jaja",
       "👍"
     ];
 
-    if (mensajesSimples.includes(textoLower)) {
-      await enviarMensaje(from, "Perfecto.");
+    if (
+      mensajesSimples.includes(textoLower)
+    ) {
+
+      await enviarMensaje(
+        from,
+        "Perfecto."
+      );
+
       return;
     }
 
     /* =========================
-       SALUDO SOLO PRIMER MENSAJE
+       SALUDO
     ========================= */
 
     const esPrimerMensaje =
@@ -267,6 +318,7 @@ app.post("/webhook", async (req, res) => {
         textoLower.includes("informes")
       )
     ) {
+
       await enviarMensaje(
         from,
         RESPUESTAS.saludo
@@ -284,7 +336,12 @@ app.post("/webhook", async (req, res) => {
       textoLower.includes("costos") ||
       textoLower.includes("cuanto")
     ) {
-      await enviarMensaje(from, RESPUESTAS.precios);
+
+      await enviarMensaje(
+        from,
+        RESPUESTAS.precios
+      );
+
       return;
     }
 
@@ -292,7 +349,12 @@ app.post("/webhook", async (req, res) => {
       textoLower.includes("pago") ||
       textoLower.includes("transferencia")
     ) {
-      await enviarMensaje(from, RESPUESTAS.pagos);
+
+      await enviarMensaje(
+        from,
+        RESPUESTAS.pagos
+      );
+
       return;
     }
 
@@ -300,15 +362,39 @@ app.post("/webhook", async (req, res) => {
       textoLower.includes("ubicacion") ||
       textoLower.includes("donde")
     ) {
-      await enviarMensaje(from, RESPUESTAS.ubicacion);
+
+      await enviarMensaje(
+        from,
+        RESPUESTAS.ubicacion
+      );
+
       return;
+    }
+
+    /* =========================
+       DETECTAR NOMBRE
+    ========================= */
+
+    const regexNombre =
+      /me llamo (.+)|soy (.+)/i;
+
+    const nombreMatch =
+      textoCliente.match(regexNombre);
+
+    if (nombreMatch) {
+
+      crm[from].nombre =
+        nombreMatch[1] ||
+        nombreMatch[2];
     }
 
     /* =========================
        DETECTAR EVENTO
     ========================= */
 
-    if (textoLower.includes("boda")) {
+    if (
+      textoLower.includes("boda")
+    ) {
       crm[from].evento = "Boda";
     }
 
@@ -335,57 +421,89 @@ app.post("/webhook", async (req, res) => {
        DETECTAR PAQUETE
     ========================= */
 
-    if (textoLower.includes("digital")) {
+    if (
+      textoLower.includes("digital")
+    ) {
       crm[from].paquete = "Digital";
     }
 
-    if (textoLower.includes("impresiones")) {
+    if (
+      textoLower.includes("impresiones")
+    ) {
       crm[from].paquete = "Impresiones";
     }
 
-    if (textoLower.includes("memorable")) {
+    if (
+      textoLower.includes("memorable")
+    ) {
       crm[from].paquete = "Memorable";
     }
 
     if (
       textoLower.includes("album express")
     ) {
-      crm[from].paquete = "Album Express";
+      crm[from].paquete =
+        "Album Express";
     }
 
     /* =========================
-       ETAPAS CRM
+       ETAPAS
     ========================= */
 
     if (
       textoLower.includes("precio") ||
       textoLower.includes("cotizacion")
     ) {
-      crm[from].etapa = "cotizacion";
+      crm[from].etapa =
+        "cotizacion";
     }
 
     if (
       textoLower.includes("anticipo") ||
       textoLower.includes("apartar")
     ) {
-      crm[from].etapa = "anticipo";
+      crm[from].etapa =
+        "anticipo";
+    }
+
+    if (
+      textoLower.includes("reservar") ||
+      textoLower.includes("agendar")
+    ) {
+      crm[from].etapa =
+        "cierre";
     }
 
     /* =========================
-       CONTEXTO CRM
+       RESUMEN IA
     ========================= */
 
-    const contextoCRM = `
-Cliente:
-Evento: ${crm[from].evento || "No definido"}
-Paquete: ${crm[from].paquete || "No definido"}
-Etapa: ${crm[from].etapa}
+    memoriaIA[from].resumen = `
+Nombre: ${crm[from].nombre || "-"}
+Evento: ${crm[from].evento || "-"}
+Paquete: ${crm[from].paquete || "-"}
+Etapa: ${crm[from].etapa || "-"}
+`;
+
+    /* =========================
+       CONTEXTO IA
+    ========================= */
+
+    const contextoSistema = `
+INFORMACION DEL CLIENTE
+
+${memoriaIA[from].resumen}
+
+INSTRUCCIONES:
+- NO preguntes datos ya definidos
+- Usa memoria previa
+- Se breve
 `;
 
     const historialIA = [
       {
         role: "user",
-        content: contextoCRM
+        content: contextoSistema
       },
       ...conversaciones[from]
     ];
@@ -395,14 +513,21 @@ Etapa: ${crm[from].etapa}
     ========================= */
 
     const respuestaCompleta =
-      await obtenerRespuestaIA(historialIA);
+      await obtenerRespuestaIA(
+        historialIA
+      );
 
     const necesitaTransferir =
-      respuestaCompleta.includes("TRANSFERIR_DUENO");
+      respuestaCompleta.includes(
+        "TRANSFERIR_DUENO"
+      );
 
     const respuestaLimpia =
       respuestaCompleta
-        .replace("TRANSFERIR_DUENO", "")
+        .replace(
+          "TRANSFERIR_DUENO",
+          ""
+        )
         .trim();
 
     /* =========================
@@ -422,7 +547,9 @@ Etapa: ${crm[from].etapa}
     metaDatos[from].mensajes.push({
       tipo: "agente",
       texto: respuestaLimpia,
-      hora: new Date().toLocaleString("es-MX")
+      hora: new Date().toLocaleString(
+        "es-MX"
+      )
     });
 
     /* =========================
@@ -430,6 +557,7 @@ Etapa: ${crm[from].etapa}
     ========================= */
 
     if (necesitaTransferir) {
+
       await notificarDueno(
         from,
         crm[from],
@@ -438,7 +566,12 @@ Etapa: ${crm[from].etapa}
     }
 
   } catch (error) {
-    console.error("Error:", error.message);
+
+    console.error(
+      "Error:",
+      error.response?.data ||
+      error.message
+    );
   }
 });
 
@@ -451,6 +584,7 @@ app.get("/panel", (req, res) => {
   const pass = req.query.pass;
 
   if (pass !== PANEL_PASSWORD) {
+
     return res.send(`
       <html>
       <body style="font-family:sans-serif;padding:40px;background:#111;color:white">
@@ -476,240 +610,56 @@ app.get("/panel", (req, res) => {
     `);
   }
 
-  const numeros = Object.keys(metaDatos);
-
-  let contactosHtml = "";
-
-  for (const num of numeros) {
-
-    const data = metaDatos[num];
-    const cliente = crm[num];
-
-    const ultimo =
-      data.mensajes[data.mensajes.length - 1];
-
-    contactosHtml += `
-      <div class="contacto" onclick="mostrar('${num}')">
-
-        <div class="numero">
-          +${num}
-        </div>
-
-        <div class="etapa">
-          ${cliente?.etapa || "nuevo"}
-        </div>
-
-        <div class="preview">
-          ${ultimo?.texto?.substring(0, 45) || ""}
-        </div>
-
-      </div>
-    `;
-  }
-
-  const datosJS =
-    JSON.stringify(metaDatos).replace(/</g, "\\u003c");
-
-  const crmJS =
-    JSON.stringify(crm).replace(/</g, "\\u003c");
-
-  res.send(`
-<!DOCTYPE html>
-<html>
-
-<head>
-
-<meta charset="UTF-8">
-
-<title>RR CRM</title>
-
-<style>
-
-*{
-  box-sizing:border-box;
-}
-
-body{
-  margin:0;
-  font-family:sans-serif;
-  background:#111;
-  color:white;
-  display:flex;
-  height:100vh;
-}
-
-#sidebar{
-  width:320px;
-  background:#1a1a1a;
-  overflow-y:auto;
-  border-right:1px solid #333;
-}
-
-#sidebar h2{
-  padding:16px;
-  margin:0;
-  background:#25D366;
-}
-
-.contacto{
-  padding:14px;
-  border-bottom:1px solid #2a2a2a;
-  cursor:pointer;
-}
-
-.contacto:hover{
-  background:#252525;
-}
-
-.numero{
-  font-weight:bold;
-}
-
-.preview{
-  font-size:12px;
-  color:#aaa;
-  margin-top:4px;
-}
-
-.etapa{
-  font-size:11px;
-  color:#25D366;
-  margin-top:4px;
-}
-
-#chat{
-  flex:1;
-  display:flex;
-  flex-direction:column;
-}
-
-#top{
-  padding:16px;
-  border-bottom:1px solid #333;
-}
-
-#mensajes{
-  flex:1;
-  overflow-y:auto;
-  padding:16px;
-}
-
-.burbuja{
-  padding:10px 14px;
-  border-radius:12px;
-  margin-bottom:10px;
-  max-width:70%;
-}
-
-.cliente{
-  background:#2a2a2a;
-}
-
-.agente{
-  background:#075E54;
-  margin-left:auto;
-}
-
-.crm{
-  margin-top:10px;
-  font-size:13px;
-  color:#bbb;
-}
-
-</style>
-</head>
-
-<body>
-
-<div id="sidebar">
-
-<h2>RR CRM</h2>
-
-${contactosHtml}
-
-</div>
-
-<div id="chat">
-
-<div id="top">
-Selecciona una conversación
-</div>
-
-<div id="mensajes"></div>
-
-</div>
-
-<script>
-
-const datos = ${datosJS};
-const crm = ${crmJS};
-
-function mostrar(num){
-
-  const data = datos[num];
-  const cliente = crm[num];
-
-  const mensajes = data.mensajes.map(m => {
-    return '<div class="burbuja '+m.tipo+'">'+m.texto+'</div>';
-  }).join("");
-
-  document.getElementById("top").innerHTML =
-    '<b>+'+num+'</b>' +
-
-    '<div class="crm">' +
-
-    'Evento: ' + (cliente.evento || '-') + '<br>' +
-
-    'Paquete: ' + (cliente.paquete || '-') + '<br>' +
-
-    'Etapa: ' + (cliente.etapa || '-') +
-
-    '</div>';
-
-  document.getElementById("mensajes").innerHTML =
-    mensajes;
-}
-
-</script>
-
-</body>
-</html>
-`);
+  res.send("CRM funcionando");
 });
 
 /* =========================
    CLAUDE
 ========================= */
 
-async function obtenerRespuestaIA(historial) {
+async function obtenerRespuestaIA(
+  historial
+) {
 
   try {
 
     const response = await axios.post(
       "https://api.anthropic.com/v1/messages",
       {
-        model: "claude-haiku-4-5-20251001",
+        model:
+          "claude-haiku-4-5-20251001",
+
         max_tokens: 180,
+
         temperature: 0.5,
+
         system: SYSTEM_PROMPT,
+
         messages: historial
       },
       {
         headers: {
-          "x-api-key": ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json"
+          "x-api-key":
+            ANTHROPIC_API_KEY,
+
+          "anthropic-version":
+            "2023-06-01",
+
+          "content-type":
+            "application/json"
         }
       }
     );
 
-    return response.data.content[0].text;
+    return response.data
+      .content[0].text;
 
   } catch (error) {
 
     console.error(
       "Error Anthropic:",
-      error.response?.data || error.message
+      error.response?.data ||
+      error.message
     );
 
     return "Lo siento, tuve un problema tecnico.";
@@ -720,24 +670,34 @@ async function obtenerRespuestaIA(historial) {
    WHATSAPP
 ========================= */
 
-async function enviarMensaje(to, texto) {
+async function enviarMensaje(
+  to,
+  texto
+) {
 
   try {
 
     await axios.post(
       `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
       {
-        messaging_product: "whatsapp",
+        messaging_product:
+          "whatsapp",
+
         to: to,
+
         type: "text",
+
         text: {
           body: texto
         }
       },
       {
         headers: {
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-          "Content-Type": "application/json"
+          Authorization:
+            `Bearer ${WHATSAPP_TOKEN}`,
+
+          "Content-Type":
+            "application/json"
         }
       }
     );
@@ -746,7 +706,8 @@ async function enviarMensaje(to, texto) {
 
     console.error(
       "Error enviando:",
-      error.response?.data || error.message
+      error.response?.data ||
+      error.message
     );
   }
 }
@@ -768,7 +729,8 @@ async function notificarDueno(
     .map(m =>
       (m.role === "user"
         ? "Cliente: "
-        : "Agente: ") + m.content
+        : "Agente: ") +
+      m.content
     )
     .join("\n");
 
@@ -777,11 +739,17 @@ Atencion requerida
 
 Cliente: +${clientePhone}
 
-Evento: ${clienteCRM.evento || "-"}
+Nombre:
+${clienteCRM.nombre || "-"}
 
-Paquete: ${clienteCRM.paquete || "-"}
+Evento:
+${clienteCRM.evento || "-"}
 
-Etapa: ${clienteCRM.etapa || "-"}
+Paquete:
+${clienteCRM.paquete || "-"}
+
+Etapa:
+${clienteCRM.etapa || "-"}
 
 Ultimos mensajes:
 ${ultimos}
@@ -797,10 +765,13 @@ ${ultimos}
    SERVER
 ========================= */
 
-const PORT = process.env.PORT || 3000;
+const PORT =
+  process.env.PORT || 3000;
 
 app.listen(PORT, () => {
+
   console.log(
-    "Servidor corriendo en puerto " + PORT
+    "Servidor corriendo en puerto " +
+    PORT
   );
 });
