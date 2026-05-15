@@ -72,6 +72,14 @@ Memorable $4500
 - Poster 10x15
 - USB incluido
 
+Paquete Masivo $7499
+- Recomendado para eventos de mas de 100 personas
+- Cobertura de las horas mas importantes del evento
+- Maximo 4 horas
+- Todas las fotos digitales editadas
+- Entrega en USB
+- Entrega por WhatsApp en HD
+
 Album Express $1150
 - 14 fotos en album fisico
 - Fotos digitales opcionales +450
@@ -93,6 +101,9 @@ CLABE 638180010168846336
 NO ofrecer descuentos.
 SI adaptar paquetes al presupuesto.
 
+Si el evento es grande o supera 100 personas,
+puedes recomendar el Paquete Masivo.
+
 TRANSFERIR_DUENO si:
 - quieren hablar con persona
 - confirmar disponibilidad
@@ -113,7 +124,7 @@ const RESPUESTAS = {
     "Hola, soy Roro de RR Photography. ¿Que tipo de evento tendras?",
 
   precios:
-    "Manejamos paquetes desde $1150 hasta $4500. ¿Que tipo de evento buscas cubrir?",
+    "Manejamos paquetes desde $1150 hasta $7499. ¿Que tipo de evento buscas cubrir?",
 
   pagos:
     "Aceptamos efectivo, transferencia y tarjeta. Para apartar fecha se requiere 50% de anticipo.",
@@ -278,7 +289,7 @@ app.post("/webhook", async (req, res) => {
     }
 
     /* =========================
-       MENSAJES MUY CORTOS
+       MENSAJES SIMPLES
     ========================= */
 
     const mensajesSimples = [
@@ -437,6 +448,16 @@ app.post("/webhook", async (req, res) => {
       textoLower.includes("memorable")
     ) {
       crm[from].paquete = "Memorable";
+    }
+
+    if (
+      textoLower.includes("masivo") ||
+      textoLower.includes("muchas personas") ||
+      textoLower.includes("100 personas") ||
+      textoLower.includes("evento grande")
+    ) {
+      crm[from].paquete =
+        "Paquete Masivo";
     }
 
     if (
